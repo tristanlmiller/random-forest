@@ -26,7 +26,7 @@ To initialize a *random_forest*, the user should pass it a list of options:
 - *target_runtime* is the approximate length of time (in minutes) you are willing to let the trees train.
 - If *fix_iter* is true (default) then each tree is grown with a fixed number of nodes, and more trees will be grown until time runs out.  If *fix_iter* is false, then a fixed number of trees will be grown with enough nodes to reach the target runtime
 
-To train the forest, use *random_forest.train(training_data)*.  All data must be in a pandas DataFrame.  To evaluate the forest on any data set, use *random_forest.confusion(evaluation_data)* to return the confusion matrix.  Use *random_forest.evaluate(evaluation_data)* to return the accuracy of the forest.  *random_forest.train_valid(training_data,evaluation_data)* will train the random forest, and then return the accuracy.  Finally, to predict the labels of any data set, use *random_forest.predict_labels(data)*.
+To train the forest, use *random_forest.train(training_data)*.  All data must be in a pandas DataFrame.  To evaluate the forest on any data set, use *random_forest.confusion(evaluation_data)* to return the confusion matrix.  Use *random_forest.evaluate(evaluation_data)* to return the accuracy of the forest.  *random_forest.train_valid(training_data,evaluation_data)* will train the random forest, and then print the accuracy.  Finally, *random_forest.predict_labels(data)* will return the predictions of the labels on any data set.
 
 ## Details of implementation
 
@@ -44,8 +44,8 @@ Finally, *random_forest* contains a list of *decision_trees*, and various user-f
 
 ## Potential areas for improvement
 
-There are a few areas where I suspect the training algorithm could be made more efficient.  First, there is the algorithm used to choose the best partition for the data.  The partition is chosen by exhaustive search, and I suspect there is a better method.  Second, rather than generating a new set of training data to give to each decision_tree, it would be more efficient to use the same data set for all trees, and simply assign random weights.
+There are a few areas where I suspect the training algorithm could be made more efficient.  First, there is the algorithm used to choose the best partition for the data.  The partition is chosen by exhaustive search, and I suspect there is a better method.  Second, rather than generating a new set of training data to give to each *decision_tree*, it would be more efficient to use the same data set for all trees, and simply assign random weights.
 
-Another way to boost efficiency, would be to train decision_trees in parallel.  Or, if I am training multiple random forests in order to optimize their hyperparameters, it would make sense to train each random forest in parallel.
+Another way to boost efficiency, would be to train *decision_trees* in parallel.  Or, if I am training multiple *random_forests* in order to optimize their hyperparameters, it would make sense to train each random forest in parallel.
 
 Finally, the random forest could be implemented for categorical or numerical labels, as well as categorical features.
