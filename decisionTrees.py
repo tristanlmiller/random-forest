@@ -78,7 +78,7 @@ class tree_node(object):
         
     #A recursive method to print out the structure of the tree
     #will look something like [[0,1],[0,[0,1]]]
-    def structure(self):
+    def summarize(self):
         if self.is_leaf:
             return str(self.guess)
         else:
