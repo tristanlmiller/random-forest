@@ -170,15 +170,7 @@ def greedy_partition(df, feature_col, label_col, weight=0.5):
         threshold = (features.iloc[int((size-1)/2)]+features.iloc[int(size/2)])/2
     else:
         incorrect = -abs(optimizer_value) + size*weight*(1-weight) + weight_sum*(weight-0.5)
-        try:
-            threshold = (unique_features[threshold_index] + unique_features[threshold_index+1])/2
-        except IndexError:
-            #print diagnostic info
-            print('threshold index: %s' % threshold_index)
-            print('unique_features length: %s' % len(unique_features))
-            print(unique_features)
-            print(optimizer)
-            raise IndexError
+        threshold = (unique_features[threshold_index] + unique_features[threshold_index+1])/2
         above = 0 if (optimizer_value > 0) else 1
         below = 1-above
     
@@ -225,16 +217,46 @@ class DecisionTree():
         node -- The former leaf node which has just produced two new children
         """
         
-        address = node.address
-        for i in range(df.shape[0]):
+        old_address = node.address
+        new_address = node.children[1].address
+        left_guess = node.children[0].guess
+        right_guess = node.children[1].guess
+        
+        col_list = list(df.columns)
+        changed_rows = [i for i in range(df.shape[0]) if self.addresses[i] == old_address]
+        prediction_results = [node.predict(row) for i,row in enumerate(df[col_list].values)
+                              if self.addresses[i] == old_address]
+        self.predictions[changed_rows] = [result[0] for result in prediction_results]
+        self.addresses[changed_rows] = [result[1] for result in prediction_results]
+        if left_guess == 1:
+            modified_incorrects = sum([(1-label) for result, label in 
+                                       zip(prediction_results, df.iloc[changed_rows, self.col])
+                                       if result[1] == old_address])*(1-self.weight)
+        else:
+            modified_incorrects = sum([label for result, label in 
+                                       zip(prediction_results, df.iloc[changed_rows, self.col])
+                                       if result[1] == old_address])*self.weight
+        if right_guess == 1:
+            new_incorrects = sum([(1-label) for result, label in 
+                                  zip(prediction_results, df.iloc[changed_rows, self.col])
+                                  if result[1] == new_address])*(1-self.weight)
+        else:
+            new_incorrects = sum([label for result, label in 
+                                  zip(prediction_results, df.iloc[changed_rows, self.col])
+                                  if result[1] == new_address])*self.weight
+        
+        '''modified_incorrects = 0
+        new_incorrects = 0
+        for i,row in enumerate(df.shape[0]):
+            curr_address = self.addresses[i]
             if self.addresses[i] == address:
                 self.predictions[i], self.addresses[i] = node.predict(df.iloc[i, :])
         
         errors = (df.iloc[:, self.col] != self.predictions)
         modified_incorrects = (errors & (self.addresses == node.children[0].address)).sum()
         new_incorrects = (errors & (self.addresses == node.children[1].address)).sum()
-        
-        self.incorrects[address] = modified_incorrects
+        '''
+        self.incorrects[old_address] = modified_incorrects
         self.incorrects = np.append(self.incorrects, new_incorrects)
     
     def grow_step(self, df):
@@ -269,7 +291,7 @@ class DecisionTree():
                 else:
                     print("Leaf %i produces children using column %i."
                           % (worst_leaf.address, worst_leaf.col))
-                print("incorrect guesses in this branch: %i before; %i after"
+                print("Weighted error in this branch: %.1f before; %.1f after"
                       % (worst, self.incorrects[worst_i]+self.incorrects[-1]))
         else:
             #if children were not produced successfully
@@ -297,9 +319,12 @@ class DecisionTree():
     
     def predict_labels(self, eval_data):
         """Predicts the labels for a set of evaluation data"""
+        col_list = list(eval_data.columns)
         predictions = np.zeros(eval_data.shape[0])
-        for i in range(eval_data.shape[0]):
-            predictions[i] = self.root.predict(eval_data.iloc[i, :])[0]
+        predictions[:] = [self.root.predict(row)[0] for row in eval_data[col_list].values]
+        #predictions = np.zeros(eval_data.shape[0])
+        #for i in range(eval_data.shape[0]):
+        #    predictions[i] = self.root.predict(eval_data.iloc[i, :])[0]
         return predictions
         
     def confusion(self, eval_data):
@@ -433,12 +458,20 @@ class RandomForest():
             
     def predict_labels(self, eval_data):
         """Predicts the labels for a set of evaluation data."""
-        predictions = np.zeros(eval_data.shape[0])
-        for i in range(eval_data.shape[0]):
-            votes = 0
-            for tree in self.forest:
-                votes += tree.root.predict(eval_data.iloc[i, :])[0]
-            predictions[i] = 1 if votes > self.num_trees/2 else 0
+        col_list = list(eval_data.columns)
+        votes = np.zeros(eval_data.shape[0])
+        predictions = votes.copy()
+        for tree in self.forest:
+            votes += [tree.root.predict(row)[0] for row in eval_data[col_list].values]
+            
+        predictions[:] = [(1 if num_votes > self.num_trees/2 else 0)
+                                  for num_votes in votes]
+        #predictions = np.zeros(eval_data.shape[0])
+        #for i in range(eval_data.shape[0]):
+        #    votes = 0
+        #    for tree in self.forest:
+        #        votes += tree.root.predict(eval_data.iloc[i, :])[0]
+        #    predictions[i] = 1 if votes > self.num_trees/2 else 0
             
         return predictions
         
