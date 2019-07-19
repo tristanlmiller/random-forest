@@ -16,7 +16,7 @@ The module *decision_trees.py* contains a class called *RandomForest* which will
 
 To initialize a *RandomForest*, the user should pass it a list of options:
 
-*RandomForest(feature_cols,label_col,iterations,num_trees,num_features,target_runtime,fix_iter=True)*
+*RandomForest(feature_cols,label_col,iterations,num_trees,num_features,target_runtime,fix_iter=True,weight=0.5)*
 
 - *feature_cols* is a slice with the indices of the columns of the features.
 - *label_col* is the index of the column with the labels.
@@ -24,7 +24,8 @@ To initialize a *RandomForest*, the user should pass it a list of options:
 - *num_trees* limits the number of trees if *fix_iter* is false (see below).
 - *num_features* is the number of dimensions that each decision tree is allowed to look at.
 - *target_runtime* is the approximate length of time (in minutes) you are willing to let the trees train.
-- If *fix_iter* is true (default) then each tree is grown with a fixed number of nodes, and more trees will be grown until time runs out.  If *fix_iter* is false, then a fixed number of trees will be grown with enough nodes to reach the target runtime
+- If *fix_iter* is true (default) then each tree is grown with a fixed number of nodes, and more trees will be grown until time runs out.  If *fix_iter* is false, then a fixed number of trees will be grown with enough nodes to reach the target runtime.
+- *weight* is the weight assigned to correctly predicting labels whose value is 1.  *weight* ranges between 0 and 1.
 
 To train the forest, use *RandomForest.train(training_data)*.  All data must be in a pandas DataFrame.  To evaluate the forest on any data set, use *RandomForest.confusion(evaluation_data)* to return the confusion matrix.  Use *RandomForest.evaluate(evaluation_data)* to return the accuracy of the forest.  *RandomForest.train_valid(training_data,evaluation_data)* will train the random forest, and then print the accuracy.  Finally, *RandomForest.predict_labels(data)* will return the predictions of the labels on any data set.
 

@@ -29,7 +29,7 @@ class TreeNode():
         self.guess = guess
         self.address = address
     
-    def make_children(self, df, feature_cols, label_col, num_leaves):
+    def make_children(self, df, feature_cols, label_col, num_leaves, weight = 0.5):
         """Choose a partition, and produce two children.  Returns True if successful
         
         Parameters:
@@ -37,6 +37,9 @@ class TreeNode():
         feature_cols -- the slice referring to the feature columns
         label_col -- the index of the label column
         num_leaves -- total number of leaves in the tree so far
+        weight -- the weight assigned to correctly guessing labels with value of 1.
+            Correctly guessing labels with value of 0 is 
+            assigned a weight of (1-weight). (default 0.5)
         """
         
         if not self.is_leaf:
@@ -96,58 +99,88 @@ class TreeNode():
         else:
             return "["+self.children[0].summarize()+","+self.children[1].summarize()+"]"
 
-def greedy_partition(df, feature_col, label_col):
+def greedy_partition(df, feature_col, label_col, weight=0.5):
     """Given a subset of the data and a single feature, determines the best partition.
     
     Parameters:
     df -- subset of data under consideration
     feature_col -- index of feature column
     label_col -- index of label column
+    weight -- the weight assigned to correctly guessing labels with value of 1.
+        Correctly guessing labels with value of 0 is 
+        assigned a weight of (1-weight). (default 0.5)
     
     Returns:
-    incorrect -- the number of incorrect guesses under this partition
+    incorrect -- the (weighted) number of incorrect guesses under this partition
     threshold -- the place to put the partition
     above -- a boolean indicating whether guesses above the threshold are 0 or 1
     below -- a boolean indicating whether guesses below the threshold are 0 or 1
     """
     
-    #I'm sure there must be a standard algorithm to do this
-    #but I'm just doing it the obvious way, by sorting the list, and testing each possible partition
-    
+    #first get the features
     features = df.iloc[:, feature_col]
-    labels = df.iloc[:, label_col]*2-1
+    size = len(features)
+    #offset the labels in order to weight them properly
+    labels = df.iloc[:, label_col] + weight - 1
+    #now sort them by feature value
     sorter = np.argsort(features)
     features = features.iloc[sorter]
     labels = labels.iloc[sorter]
     
-    #the optimizer is a funcion whose absolute value is larger when there are fewer errors
-    #it's positive when the guess below the threshold is 1
-    diff = labels.sum()
-    optimizer = labels.cumsum() - diff/2
-    
-    #there are frequently duplicate values in the features list
-    #I only want to consider partitions between rows that have distinct feature values
-    unique_i = np.unique(list(features), return_index=True)[1]
-    if len(unique_i) == 1:
-        #All features are identical in this branch, so there's no point in using it
-        return np.inf, 0, 0, 0
-    else:
-        allowable_opt = optimizer.iloc[unique_i[1:]-1]
-        threshold_i = unique_i[np.argmax(list(abs(allowable_opt)))+1]-1
-        
-        if abs(optimizer.iloc[threshold_i]) < abs(diff)/2:
-            #This is the condition where it's better to guess the same thing
-            #on both sides of the partition
-            #The partition doesn't matter, so just suggest the median
-            incorrect = (-abs(diff) + len(labels))/2
-            threshold = features.median()
-            above = 1 if (diff > 0) else 0
-            below = above
+    #next we want to group data points whose features are identical
+    unique_features = []
+    weighted_labels = []
+    previous_feature = np.nan
+    for i, feature in enumerate(features):
+        if feature == previous_feature:
+            weighted_labels[-1] += labels.iloc[i]
         else:
-            incorrect = -abs(optimizer.iloc[threshold_i]) + len(labels)/2
-            threshold = (features.iloc[threshold_i]+features.iloc[threshold_i+1])/2
-            above = 0 if (optimizer.iloc[threshold_i] > 0) else 1
-            below = 1-above
+            unique_features.append(feature)
+            weighted_labels.append(labels.iloc[i])
+            previous_feature = feature
+    
+    if len(unique_features) == 1:
+        #if all features are identical, then no partition can be made
+        return np.inf, 0, 0, 0
+    
+    #next I create a magic list (called "optimizer") which computes a goodness metric
+    #for any choice of partition.
+    #If the best partition (on unique_features) is between index i and i+1, 
+    #then abs(optimizer) is maximized at index i
+    optimizer = np.cumsum(weighted_labels)
+    weight_sum = optimizer[-1]
+    optimizer -= weight_sum/2
+    optimizer[-1] = 0 #don't want to make a partition after last element
+    
+    threshold_index = np.argmax(abs(optimizer))
+    optimizer_value = optimizer[threshold_index]
+    if abs(optimizer_value) < abs(weight_sum)/2:
+        #under this condition, it's best to guess the same thing on both sides of partition
+        if weight_sum > 0:
+            #guess 1 on both sides
+            above = 1
+            below = 1
+            incorrect = size*weight*(1-weight) + weight_sum*(weight-1)
+        else:
+            #guess 0 on both sides
+            above = 0
+            below = 0
+            incorrect = size*weight*(1-weight) + weight_sum*weight
+        #either way, set threshold to the median
+        threshold = (features.iloc[int((size-1)/2)]+features.iloc[int(size/2)])/2
+    else:
+        incorrect = -abs(optimizer_value) + size*weight*(1-weight) + weight_sum*(weight-0.5)
+        try:
+            threshold = (unique_features[threshold_index] + unique_features[threshold_index+1])/2
+        except IndexError:
+            #print diagnostic info
+            print('threshold index: %s' % threshold_index)
+            print('unique_features length: %s' % len(unique_features))
+            print(unique_features)
+            print(optimizer)
+            raise IndexError
+        above = 0 if (optimizer_value > 0) else 1
+        below = 1-above
     
     return incorrect, threshold, above, below
     
@@ -165,9 +198,12 @@ class DecisionTree():
     predictions -- A list of predictions for the labels of each row
     runtime -- current runtime for the training of this tree
     verbose -- if true, prints out information as tree is trained
+    weight -- the weight assigned to correctly guessing labels with value of 1.
+        Correctly guessing labels with value of 0 is 
+        assigned a weight of (1-weight).
     """
     
-    def __init__(self, df, feature_cols, label_col):
+    def __init__(self, df, feature_cols, label_col, weight=0.5):
         """Initializes a DecisionTree on a given data set"""
         self.root = TreeNode(0, 0)
         self.features = feature_cols
@@ -179,6 +215,7 @@ class DecisionTree():
         self.predictions = np.ones(df.shape[0])
         self.runtime = 0
         self.verbose = False
+        self.weight = weight
     
     def update(self, df, node):
         """Updates instance variables addresses, incorrects, and predictions, in light of new leaves
@@ -217,8 +254,8 @@ class DecisionTree():
         worst_leaf = self.root.get_leaf(row)
         
         #now, give the leaf new children
-        success = worst_leaf.make_children(df.loc[pd.IndexSlice[(self.addresses == worst_i)],
-                                                  :], self.features, self.col, self.num_leaves)
+        success = worst_leaf.make_children(df.loc[pd.IndexSlice[(self.addresses == worst_i)], :],
+                                           self.features, self.col, self.num_leaves, weight=self.weight)
         if success:
             #if children were produced successfully
             self.num_leaves += 1
@@ -301,10 +338,13 @@ class RandomForest():
     runtime -- time spent training so far
     checkpoint -- a checkpoint for the timer
     forest -- a list of pointers to the DecisionTrees
+    weight -- the weight assigned to correctly guessing labels with value of 1.
+        Correctly guessing labels with value of 0 is 
+        assigned a weight of (1-weight).
     """
     
     def __init__(self, feature_cols, label_col, iterations, num_trees,
-                 num_features, target_runtime, fix_iter=True):
+                 num_features, target_runtime, fix_iter=True, weight=0.5):
         """Initializes RandomForest settings."""
         self.features = feature_cols
         self.col = label_col
@@ -313,6 +353,7 @@ class RandomForest():
         self.num_features = num_features
         self.target_runtime = target_runtime
         self.fix_iter = fix_iter
+        self.weight = weight
         
         self.runtime = 0
         self.checkpoint = 0
@@ -340,7 +381,7 @@ class RandomForest():
             #Grow the first tree carefully, trying to estimate the appropriate number of iterations
             bagged_df = bag(df)
             
-            curr_tree = DecisionTree(bagged_df, self.subspace(), self.col)
+            curr_tree = DecisionTree(bagged_df, self.subspace(), self.col, self.weight)
             self.forest.append(curr_tree)
             curr_tree.grow_tree(bagged_df, 10, 0) #just ten iterations at first
             
@@ -360,7 +401,7 @@ class RandomForest():
             for i in range(1, self.num_trees):
                 bagged_df = bag(df)
                 
-                curr_tree = DecisionTree(bagged_df, self.subspace(), self.col)
+                curr_tree = DecisionTree(bagged_df, self.subspace(), self.col, self.weight)
                 self.forest.append(curr_tree)
                 curr_tree.grow_tree(bagged_df, self.num_iter, 0)
                 
@@ -373,7 +414,7 @@ class RandomForest():
             while self.runtime < self.target_runtime:
                 bagged_df = bag(df)
                 
-                curr_tree = DecisionTree(bagged_df, self.subspace(), self.col)
+                curr_tree = DecisionTree(bagged_df, self.subspace(), self.col, self.weight)
                 #curr_tree = DecisionTree(bagged_df, self.features, self.col)
                 self.forest.append(curr_tree)
                 curr_tree.grow_tree(bagged_df, self.num_iter, 0)
@@ -383,9 +424,8 @@ class RandomForest():
             self.num_trees = len(self.forest)
         
         self.runtime += old_runtime
-        print("""Forest planted in %.2f minutes.
-              %i trees grown with %i iterations and %i features.""" %
-              (self.runtime, self.num_trees, self.num_iter, self.num_features))
+        print("""Forest planted in %.2f minutes. %i trees grown with %i iterations and %i features."""
+              % (self.runtime, self.num_trees, self.num_iter, self.num_features))
     
     def subspace(self):
         """Returns a subspace of the feature space"""
