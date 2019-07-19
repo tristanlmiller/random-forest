@@ -45,8 +45,8 @@ Finally, *RandomForest* contains a list of *DecisionTree*, and various user-faci
 
 ## Potential areas for improvement
 
-There are a few areas where I suspect the training algorithm could be made more efficient.  First, there is the algorithm used to choose the best partition for the data.  The partition is chosen by exhaustive search, and I suspect there is a better method.  Second, rather than generating a new set of training data to give to each *DecisionTree*, it would be more efficient to use the same data set for all trees, and simply assign random weights.
+In a comparison to sklearn's RandomForestClassifier, my algorithm does not perform as well, and in particular it's hundreds of times slower in terms of computation time.  I do not know what exactly sklearn does to improve its efficiency, although I suspect that it's working with vectorized computation.
 
-Another way to boost efficiency, would be to train *DecisionTree*s in parallel.  Or, if I am training multiple *RandomForest*s in order to optimize their hyperparameters, it would make sense to train each random forest in parallel.
+A few possible areas where I think my training algorithm could be made more efficient. First, there is the algorithm used to choose the best partition for the data.  The partition is chosen by a greedy algorithm, and maybe there's something better.  Second, rather than generating a new set of training data to give to each *DecisionTree*, it would be more efficient to use the same data set for all trees, and simply assign random weights.  Third, it would make sense to train multiple *DecisionTree*s in parallel (although I note that sklearn's version performs faster even without parallel computing).
 
-Finally, the random forest could be implemented for categorical or numerical labels, as well as categorical features.
+My RandomForest also lacks flexibility, in that it only works for binary labels, and numerical features.
